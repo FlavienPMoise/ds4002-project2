@@ -40,6 +40,8 @@ plt.close()
 
 df["hour"] = df["Datetime"].dt.hour
 df["DayNight"] = np.where(df["hour"].between(8, 19), "Day", "Night")
+# numeric day/night indicator for correlation (1=day, 0=night)
+df["Day"] = (df["DayNight"] == "Day").astype(int)
 
 #Figure 2
 means_daynight = df.groupby("DayNight")[measurement_cols].mean()
@@ -67,8 +69,8 @@ plt.close()
 
 df["WeekdayNum"] = df["Datetime"].dt.weekday
 df["DayType"] = np.where(df["WeekdayNum"] >= 5, "Weekend", "Weekday")
-
-#Figure 3
+# numeric weekday/weekend indicator for correlation (1=weekday, 0=weekend)
+df["Weekday"] = (df["DayType"] == "Weekday").astype(int)
 means_daytype = df.groupby("DayType")[measurement_cols].mean()
 stds_daytype = df.groupby("DayType")[measurement_cols].std()
 
@@ -102,7 +104,8 @@ plt.savefig("output/figure4_volatility.png", dpi=200)
 plt.close()
 
 #Figure 5
-corr = df[measurement_cols].corr()
+# include binary indicators alongside the original measurements for correlation
+corr = df[measurement_cols + ["Day", "Weekday"]].corr()
 
 plt.figure(figsize=(10, 8))
 sns.heatmap(corr, annot=False, cmap="coolwarm", center=0)

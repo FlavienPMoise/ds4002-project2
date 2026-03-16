@@ -1,91 +1,99 @@
-import argparse
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
-import seaborn as sns
-
+import os
 from sklearn.linear_model import LinearRegression
 from sklearn.model_selection import train_test_split
-from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
+from sklearn.metrics import mean_squared_error, r2_score
+from eda import df, measurement_cols
 
-from eda import df, measurement_cols  # cleaned dataset and column list from eda
 
 
-def train_linear(df, target, features=None, test_size=0.2, random_state=42):
-    # select feature columns; by default use only numeric measurements and drop
-    # anything that can't be fed to LinearRegression (strings, categories, etc.)
-    if features is None:
-        numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
-        features = [c for c in numeric_cols if c not in [target]]
-    else:
-        # ensure provided features are numeric and not the target
-        bad = [c for c in features if c == target or
-               not pd.api.types.is_numeric_dtype(df[c])]
-        if bad:
-            raise ValueError(f"Invalid feature columns (must be numeric and not the target): {bad}")
+def run_ols_for_pollutants(df: pd.DataFrame, measurement_cols: list[str], output_dir: str) -> pd.DataFrame:
+    results = []
+    features = ["Day", "Weekday"]
 
-    data = df[features + [target]].dropna()
-    X = data[features]
-    y = data[target]
+    for target in measurement_cols:
+        if target in ["Date", "Time", "Datetime", "hour", "DayNight", "WeekdayNum", "WeekdayWeekend"]:
+            continue
+        # ignore non-numeric columns or those with insufficient data
+        if not np.issubdtype(df[target].dtype, np.number):
+            continue
+        df_sub = df[[target, "Day", "Weekday"]].dropna()
+        if df_sub.shape[0] < 50:
+            continue
 
-    X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=test_size, random_state=random_state
-    )
+        X = df_sub[features]
+        y = df_sub[target]
+        model = LinearRegression(fit_intercept=True)
+        model.fit(X, y)
+        y_pred = model.predict(X)
 
-    model = LinearRegression()
-    model.fit(X_train, y_train)
-    preds = model.predict(X_test)
+        results.append({
+            "target": target,
+            "n": int(df_sub.shape[0]),
+            "r_squared": float(r2_score(y, y_pred)),
+            "intercept": float(model.intercept_),
+            "coef_day": float(model.coef_[0]),
+            "coef_weekday": float(model.coef_[1]),
+        })
+
+    out = pd.DataFrame(results)
+    out = out.sort_values(by="r_squared", ascending=False)
+    os.makedirs(output_dir, exist_ok=True)
+    out.to_csv(os.path.join(output_dir, "linear_reg_day_weekday_results.csv"), index=False)
+    return out
+
+
+def run_predictive_evaluation(df: pd.DataFrame, target: str, output_dir: str) -> dict:
+    features = ["Day", "Weekday"]
+    df_sub = df[[target, "Day", "Weekday"]].dropna()
+    X = df_sub[features]
+    y = df_sub[target]
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+    lr = LinearRegression()
+    lr.fit(X_train, y_train)
+    y_pred = lr.predict(X_test)
 
     metrics = {
-        "mse": mean_squared_error(y_test, preds),
-        "mae": mean_absolute_error(y_test, preds),
-        "r2": r2_score(y_test, preds)
+        "target": target,
+        "coef_day": float(lr.coef_[0]),
+        "coef_weekday": float(lr.coef_[1]),
+        "intercept": float(lr.intercept_),
+        "rmse": float(np.sqrt(mean_squared_error(y_test, y_pred))),
+        "r2": float(r2_score(y_test, y_pred)),
     }
-    return model, X_test, y_test, preds, metrics
 
-
+    return metrics
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description="Train a linear regression model on the AirQualityUCI dataset"
-    )
-    parser.add_argument(
-        "--target", type=str, required=True,
-        help="column name to use as the response variable"
-    )
-    parser.add_argument(
-        "--features", type=str, nargs="+",
-        help="list of feature column names (default = all other measurements)"
-    )
-    parser.add_argument(
-        "--test-size", type=float, default=0.2,
-        help="fraction of data to reserve for testing (default 0.20)"
-    )
+    global df, measurement_cols
 
-    args = parser.parse_args()
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    # Save outputs relative to repository root (parent of scripts)
+    output_dir = os.path.join(script_dir, "..", "output")
+    output_dir = os.path.abspath(output_dir)
+    print(f"Using output directory: {output_dir}")
 
-    if args.target not in measurement_cols:
-        raise ValueError(
-            f"Target must be one of the measurement columns: {measurement_cols}"
-        )
+    ols_results = run_ols_for_pollutants(df, measurement_cols, output_dir)
+    summary_path = os.path.join(output_dir, "linear_reg_day_weekday_results.csv")
+    print(f"Linear regression summary saved to {summary_path}")
 
-    if args.features is not None:
-        for feat in args.features:
-            if feat not in measurement_cols or feat == args.target:
-                raise ValueError(f"Invalid feature column: {feat}")
+    print("\nDay/Night and Weekday/Weekend regression coefficients by pollutant:")
+    display_cols = ["target", "n", "r_squared", "intercept", "coef_day", "coef_weekday"]
+    print(ols_results[display_cols].head(15).to_string(index=False))
 
-    model, X_test, y_test, preds, metrics = train_linear(
-        df, args.target, features=args.features, test_size=args.test_size
-    )
+    top_targets = ols_results.sort_values(by="r_squared", ascending=False).head(3)["target"].tolist()
+    eval_metrics = []
+    for t in top_targets:
+        m = run_predictive_evaluation(df, t, output_dir)
+        eval_metrics.append(m)
 
-    print("Model coefficients:", model.coef_)
-    print("Intercept:", model.intercept_)
-    print("Evaluation metrics:")
-    for k, v in metrics.items():
-        print(f"  {k}: {v:.4f}")
-
+    eval_df = pd.DataFrame(eval_metrics)
+    eval_df.to_csv(os.path.join(output_dir, "linear_regression_predictive_evaluation.csv"), index=False)
+    print("\nPredictive evaluation saved to output/linear_regression_predictive_evaluation.csv")
+    print(eval_df.to_string(index=False))
 
 if __name__ == "__main__":
     main()
-
