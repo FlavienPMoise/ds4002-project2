@@ -23,7 +23,7 @@ This project was developed and tested on: **Windows** and **Linux**
 ## 2. Documentation Map (Project Structure)
 
 Below is an outline of the folder and file structure of the project repository:
-
+```
 Project-Folder/
 ├── LICENSE
 ├── README.md
@@ -47,7 +47,7 @@ Project-Folder/
     ├── correlations.py
     ├── eda.py
     └── linear_reg.py
-
+```
 
 **Folder descriptions:**
 - `data/`: Contains the raw csv dataset and the final version used for statistical analysis.

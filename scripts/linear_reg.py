@@ -1,3 +1,11 @@
+"""
+Linear regression to produce correlations and predict future values. 
+
+This script loads the raw data, adds the day and weekday flag columns, creates a new data csv with those columns, and runs a linear regression model. 
+
+Outputs a CSV with added day and weekday flags, correlation values, and test values. 
+"""
+
 import pandas as pd
 import numpy as np
 import os
