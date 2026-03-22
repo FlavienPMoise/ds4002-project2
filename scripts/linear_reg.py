@@ -13,7 +13,9 @@ from sklearn.linear_model import LinearRegression
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import mean_squared_error, r2_score
 from eda import df, measurement_cols
-
+import matplotlib.pyplot as plt
+from matplotlib.table import Table
+import seaborn as sns
 
 def run_ols_for_pollutants(df: pd.DataFrame, measurement_cols: list[str], output_dir: str) -> pd.DataFrame:
     results = []
@@ -108,7 +110,30 @@ def day_week_correlation(df: pd.DataFrame, measurement_cols: list[str], output_d
     os.makedirs(output_dir, exist_ok=True)
     corr_details.to_csv(os.path.join(output_dir, "day_weekday_correlations.csv"), index=False) #output results into a CSV file in the output directory
     return corr_details
+#Create and save a simple heatmap of correlations, ordered by corr_with_day.
+def plot_corr_heatmap(corr_df: pd.DataFrame, output_path: str) -> None:
+    # Sort by correlation with day (highest to lowest) by absolute value
+    corr_df_sorted = corr_df.sort_values(by="corr_with_day", key=lambda s: np.abs(s), ascending=False)
 
+    #build matrix for heatmap
+    heatmap_df = corr_df_sorted.set_index("target")[["corr_with_day", "corr_with_weekday"]]
+
+    plt.figure(figsize=(8, max(4, len(heatmap_df) * 0.3)))
+    ax = sns.heatmap(
+        heatmap_df,
+        annot=True,
+        fmt=".2f",
+        cmap="coolwarm",
+        center=0,
+        cbar=True
+    )
+    ax.set_title("Correlation with Day / Weekday")
+    ax.set_xlabel("Feature")
+    ax.set_ylabel("Pollutant")
+
+    plt.tight_layout()
+    plt.savefig(output_path, dpi=300)
+    plt.close()
 
 def main():
     global df, measurement_cols
@@ -133,10 +158,15 @@ def main():
     print("\nTest-split accuracy/eval metrics for each pollutant (saved in output/linear_regression_test_metrics_by_pollutant.csv):")
     print(test_metrics.to_string(index=False))
 
-    #evaluate correlation of each pollutant with the Day and Weekday indicators, and save the results to a CSV file in the output directory
+    #evaluate correlation of each pollutant with the Day and Weekday indicators, and save the results to a CSV and png file in the output directory
     corr_details = day_week_correlation(df, measurement_cols, output_dir)
     print("\nCorrelation with Day/Night and Weekday/Weekend binary indicators (saved in output/day_weekday_correlations.csv):")
     print(corr_details.to_string(index=False))
+    #save correlation heatmap
+    heatmap_file = os.path.join(output_dir, "day_weekday_correlations_heatmap.png")
+    plot_corr_heatmap(corr_details, heatmap_file)
+    print(f"\nSaved correlation heatmap to {heatmap_file}")
+
 
     #save day/week flags to data CSV
     out_cols = [c for c in ["Date", "Time", "Datetime", "Day", "Weekday"] if c in df.columns]

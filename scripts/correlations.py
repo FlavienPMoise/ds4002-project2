@@ -57,25 +57,62 @@ def highlight_strong_correlations(corr_df: pd.DataFrame) -> pd.DataFrame:
 
     return corr_df
 
-#Create a simple heatmap of correlations for visualization
+#create a simple heatmap of correlations for visualization
 def plot_correlation_heatmap(corr_df: pd.DataFrame, output_path: str) -> None:
-    heatmap_df = corr_df.set_index("pollutant")[["r_day", "r_weekday"]]
+    #get correlations
+    r_df = corr_df.set_index("pollutant")[["r_day", "r_weekday"]]
 
-    plt.figure(figsize=(8, max(4, len(heatmap_df) * 0.3)))
+    # P values, rounded to nearest hundredth
+    p_df = corr_df.set_index("pollutant")[["p_day", "p_weekday"]].round(2)
 
+    fig, axes = plt.subplots(
+        nrows=1,
+        ncols=2,
+        figsize=(12, max(4, len(r_df) * 0.3)),
+        sharey=True
+    )
+
+    # correlations heatmap
     sns.heatmap(
-        heatmap_df,
+        r_df,
+        ax=axes[0],
         annot=True,
         fmt=".2f",
         cmap="coolwarm",
-        center=0
+        center=0,
+        cbar=True
     )
+    axes[0].set_title("Correlation (r) with Day / Weekday")
 
-    plt.title("Correlations with Day and Weekday")
+    # p values heatmap, with green highlight if p < 0.05
+    sns.heatmap(
+        p_df,
+        ax=axes[1],
+        annot=True,
+        fmt=".2f",
+        cmap="Greys",
+        cbar=False
+    )
+    axes[1].set_title("p values (green if < 0.05)")
+
+    #green background where p < 0.05
+    for i in range(p_df.shape[0]):
+        for j in range(p_df.shape[1]): 
+            p_val = p_df.iloc[i, j]
+            if p_val < 0.05:
+                axes[1].add_patch(
+                    plt.Rectangle(
+                        (j, i), 1, 1,
+                        fill=True,
+                        color="lightgreen",
+                        alpha=0.5,
+                        linewidth=0
+                    )
+                )
+
     plt.tight_layout()
     plt.savefig(output_path, dpi=200)
     plt.close()
-
 
 def main():
     # set up paths
